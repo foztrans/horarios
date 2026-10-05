@@ -1,0 +1,37 @@
+APLICATIVO "ÔNIBUS DE FOZ DO IGUAÇU" (PWA)
+==========================================
+
+O QUE É
+A mesma página do mapa das linhas, pronta para virar ícone na tela inicial do celular
+(Android e iPhone) e abrir em tela cheia, sem a moldura do site. Não precisa de loja nem de .apk.
+
+COMO PUBLICAR
+1. Coloque TODOS os arquivos desta pasta, mantendo as subpastas, num endereço https próprio.
+   Exemplos: https://mapa.foztrans.pr.gov.br/  ou  https://www.foztrans.pr.gov.br/onibus/
+   (não funciona dentro de uma página do WordPress: precisa ser o endereço direto da pasta).
+2. Abra o endereço no celular e confira se o mapa carrega.
+
+   index.html              a página (é o único arquivo que muda nas atualizações)
+   manifest.webmanifest    nome, cores e ícones do aplicativo
+   sw.js                   guarda a página no aparelho e cuida das atualizações
+   vendor/leaflet.js       biblioteca do mapa
+   icons/                  ícones
+
+COMO O USUÁRIO INSTALA
+Android (Chrome): abrir o endereço, menu (três pontos), "Adicionar à tela inicial" ou "Instalar aplicativo".
+iPhone (Safari):  abrir o endereço, botão Compartilhar, "Adicionar à Tela de Início".
+
+COMO ATUALIZAR DEPOIS
+- Horários, linhas e trajetos: nada a fazer aqui. Continuam vindo do Apps Script, como hoje.
+- Posição dos ônibus: idem, vem do Apps Script.
+- Mudança na página (correção, função nova): substitua só o index.html no servidor pelo novo.
+  Quem já instalou recebe a versão nova sozinho, na próxima vez que abrir com internet.
+  Ninguém precisa reinstalar e não há loja para aprovar.
+- Nome ou ícone do aplicativo: troque manifest.webmanifest e a pasta icons. Quem já instalou só vê
+  o ícone novo se remover e adicionar de novo.
+
+OBSERVAÇÕES
+- Sem internet o aplicativo abre com os horários da última vez; o mapa de fundo e o tempo real não aparecem.
+- Se a chave do mapa de fundo (MapTiler) estiver restrita por endereço, inclua o endereço novo na lista permitida.
+- O ícone é provisório (ônibus sobre fundo azul). Para usar a marca do FOZTRANS, substitua os arquivos da pasta icons
+  por imagens quadradas dos mesmos tamanhos: 512, 192, 180 (apple-touch-icon) e 32 pixels.
