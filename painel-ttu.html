@@ -39,7 +39,7 @@ header .data{font-size:22px;color:#566777;font-weight:600}
 .sit i{width:20px;height:20px;border-radius:50%;flex:none;background:var(--mu)}
 .sit.term{color:var(--verde)} .sit.term i{background:var(--verde);animation:pisca 1.2s infinite}
 .sit.cheg{color:var(--amarelo)} .sit.cheg i{background:var(--amarelo)}
-.sit.atr{color:var(--verm)} .sit.atr i{background:var(--verm)}
+.sit.prev{color:#e8eef2} .sit.prev i{background:#5a9cf0}
 .sit.saindo{color:#fff} .sit.saindo i{background:var(--laranja);animation:pisca .8s infinite}
 .sit.prog{color:var(--mu);font-weight:600}
 .sit.off{color:#c9d3dc;font-weight:600} .sit.off i{background:transparent;border:3px solid #7d8b98}
@@ -170,15 +170,16 @@ function situacaoPonto(o,dk){ const ag=agora(), a=o.t[dk]||[], agMs=Date.now(); 
     if(eta!=null){ const etaR=Math.max(1,Math.round(eta)), nota=velho>=1?' · último sinal há '+velho+' min':'';
       // "Atrasado" só entra com folga de 6 min e só sai com folga de 3 (não fica piscando entre os dois)
       const atr=mem&&mem.st==='atr'?eta>f+3:eta>f+6;
-      if(etaR<=5){ mem.st='cheg'; out.push({x:v,c:'cheg',t:'Chegando',sub:'≈ '+etaR+' min'+(f<-2?' · atrasado '+(-f)+' min':'')+nota,e:ag+eta}); continue; }
-      if(atr){ mem.st='atr'; out.push({x:v,c:'atr',t:'Atrasado',sub:'previsto ≈ '+hm(Math.round(ag+eta))+nota,e:ag+eta}); continue; }
+      if(etaR<=5){ mem.st='cheg'; out.push({x:v,c:'cheg',t:'Chegando',sub:'≈ '+etaR+' min'+nota,e:ag+eta,h:ag+eta}); continue; }
+      // passa depois do programado: mostra o horário previsto pelo GPS no lugar do programado (sem rótulo de "atraso")
+      if(atr){ mem.st='atr'; out.push({x:v,c:'prev',t:'Em '+etaR+' min',sub:'previsto pelo GPS'+nota,e:ag+eta,h:ag+eta}); continue; }
       mem.st='prog'; out.push({x:v,c:'prog',t:f<60?'Em '+f+' min':'Programado',sub:'ônibus a caminho'+nota}); continue; }
     if(v.m+2<=ag) continue;
     // viagem que já saiu do ponto inicial e cujo ônibus não aparece no GPS: avisa que está sem sinal
     if(RT.t&&v.ini<=ag){ out.push({x:v,c:'off',t:f<=0?'Agora':'Em '+f+' min',sub:'ônibus sem sinal de GPS'}); continue; }
     out.push({x:v,c:f<=0?'saindo':'prog',t:f<=0?'Agora':f<60?'Em '+f+' min':'Programado',sub:RT.t?(f<60?'horário estimado':''):'GPS indisponível no momento'}); }
   Object.keys(MEM).forEach(k=>{ if(agMs-MEM[k].t>90*60000) delete MEM[k]; });
-  // ordem pelo horário em que o ônibus deve passar de fato: um atrasado que só chega depois do seguinte vai para trás dele
+  // ordem pelo horário em que o ônibus deve passar de fato: um que só chega depois do seguinte vai para trás dele
   out.forEach(z=>{ if(z.e==null) z.e=z.x.m; }); out.sort((p,q)=>p.e-q.e);
   return out.length?out:null; }
 
@@ -210,7 +211,7 @@ function situacao(o,dk){ const ag=agora(), a=(o.t[dk]||[]), prox=a.filter(x=>x.m
     const v=vindo[i-noTerm.length];
     const nota=v&&v.velho>=1?' · último sinal há '+v.velho+' min':'', mm=v?MEM[v.k]:null;
     if(v&&v.eta<=5){ if(mm) mm.st='cheg'; return {x,c:'cheg',t:'Chegando',sub:'≈ '+v.eta+' min para o Terminal'+nota}; }
-    if(v&&(mm&&mm.st==='atr'?v.eta>f+3:v.eta>f+6)){ if(mm) mm.st='atr'; return {x,c:'atr',t:'Atrasado',sub:'saída prevista ≈ '+hm(Math.round(ag+v.eta+1))+nota}; }
+    if(v&&(mm&&mm.st==='atr'?v.eta>f+3:v.eta>f+6)){ if(mm) mm.st='atr'; return {x,c:'prev',t:'Em '+(v.eta+1)+' min',sub:'saída prevista pelo GPS'+nota,e:ag+v.eta+1,h:ag+v.eta+1}; }
     if(mm) mm.st='prog';
     if(f<=0) return {x,c:'saindo',t:'Agora',sub:'horário programado'};
     return {x,c:'prog',t:f<60?'Em '+f+' min':'Programado',sub:v?'ônibus a caminho do Terminal':(RT.t?'':'sem GPS no momento')}; });
@@ -225,12 +226,12 @@ function desenha(){ if(!D) return; const dk=tipoDia(), ag=agora();
   if(!NO_TTU){ const ul=$('#cab').lastElementChild; if(ul) ul.textContent=umaPorViagem?'Viagem':'Depois'; }
   const porPag=12, pags=Math.max(1,Math.ceil(ativos.length/porPag)); if(pagina>=pags) pagina=0;
   const vis=ativos.slice(pagina*porPag,(pagina+1)*porPag), h=Math.floor((1080-118-64-70)/porPag);
-  $('#lista').innerHTML=vis.map(r=>{ const o=r.o, s0=r.s[0], depois=r.via?'início '+hm(s0.x.ini):r.s.slice(1,3).map(z=>hm(Math.round(z.x.m))).join(' · ');
+  $('#lista').innerHTML=vis.map(r=>{ const o=r.o, s0=r.s[0], depois=r.via?'início '+hm(s0.x.ini):r.s.slice(1,3).map(z=>hm(Math.round(z.h||z.x.m))).join(' · ');
     const rot=s0.x.r?cap(s0.x.r):'';
     return '<div class="row" style="--h:'+h+'px"><div class="num" style="background:'+o.cor+';color:#fff'+(o.ids.join('/').length>4?';font-size:32px':'')+'">'+esc(o.ids.join('/'))+'</div>'+
       '<div class="dest"><b>'+esc(o.dest)+'</b>'+(rot?'<span>'+esc(rot)+'</span>':'')+'</div>'+
       (NO_TTU?'<div class="ala">'+(o.ala?esc(o.ala)+'<small>ala</small>':'—')+'</div>':'')+
-      '<div class="hr">'+hm(Math.round(s0.x.m))+'</div>'+
+      '<div class="hr">'+hm(Math.round(s0.h||s0.x.m))+'</div>'+
       '<div class="sit '+s0.c+'"><i></i><div>'+esc(s0.t)+(s0.sub?'<small>'+esc(s0.sub)+'</small>':'')+'</div></div>'+
       '<div class="dep">'+esc(depois)+'</div></div>'; }).join('')+(pags>1?'<div class="pag">página '+(pagina+1)+' de '+pags+'</div>':'')+
       (!ativos.length?'<div class="row" style="--h:120px"><div></div><div class="dest"><b>'+(NO_TTU?'Sem mais partidas hoje':'Sem mais ônibus hoje neste ponto')+'</b></div></div>':'');
