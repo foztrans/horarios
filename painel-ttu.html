@@ -42,6 +42,7 @@ header .data{font-size:22px;color:#566777;font-weight:600}
 .sit.atr{color:var(--verm)} .sit.atr i{background:var(--verm)}
 .sit.saindo{color:#fff} .sit.saindo i{background:var(--laranja);animation:pisca .8s infinite}
 .sit.prog{color:var(--mu);font-weight:600}
+.sit.off{color:#c9d3dc;font-weight:600} .sit.off i{background:transparent;border:3px solid #7d8b98}
 .sit small{display:block;font-size:20px;font-weight:600;color:var(--mu)}
 .dep{font-family:var(--display);font-size:34px;color:var(--mu);font-variant-numeric:tabular-nums}
 .enc .hr,.enc .dest b{color:var(--mu)}
@@ -143,27 +144,42 @@ function preparaPonto(){
     Object.keys(l.dep||{}).forEach(dk=>{ ['T','B'].forEach(sx=>{ (l.dep[dk][sx]||[]).forEach(x=>{ const sh=l.shapes[x[1]]; if(!sh||ESP_RE.test(sh.v||'')) return; const lp=noPonto(sh); if(!lp) return;
       const m=x[0]<180?x[0]+1440:x[0], k=g+'|'+sx;
       const o=por[k]||(por[k]={id:g,s:sx,ids:[],nome,cor:l.cor,cfg,t:{},ala:'',
-        dest:sx==='T'?(tira(cfg.B)||(ttu?nome:'Sentido ida')):(tira(cfg.T)||(ttu?'Terminal (TTU)':'Sentido volta'))});
+        dest:sx==='T'?'Sentido '+(tira(cfg.B)||nome):(ttu?'Sentido Centro (Terminal TTU)':'Sentido '+(tira(cfg.T)||'volta'))});
       if(o.ids.indexOf(l.id)<0) o.ids.push(l.id);
       const vs=cfg.var||{}, rot=Object.prototype.hasOwnProperty.call(vs,sh.v)?vs[sh.v]:'';
       (o.t[dk]=o.t[dk]||[]).push({m:m+lp.off,ini:m,r:rot,l:l.id,sh,lp}); }); }); }); });
   LIN=Object.values(por); LIN.forEach(o=>Object.values(o.t).forEach(a=>a.sort((p,q)=>p.m-q.m)));
 }
 // situação no ponto: o ônibus de cada viagem é achado pelo minuto de saída que o ITS informa; o que falta é medido pelo trajeto
-function situacaoPonto(o,dk){ const ag=agora(), a=o.t[dk]||[]; if(!a.length) return null;
-  const bus={}; RT.v.forEach(x=>{ if(o.ids.indexOf(String(x[3]))<0||x[5]==null||x[6]>=240) return; const sx=x[4]==='0'?'T':x[4]==='1'?'B':null; if(sx&&sx!==o.s) return; bus[String(x[3])+'|'+(x[5]%1440)]=x; });
+// memória da última posição de cada viagem: quando o ônibus some do GPS por alguns minutos, a previsão continua
+// a partir do último sinal (descontando o tempo que passou) em vez de pular entre "Chegando", "Atrasado" e o horário programado
+const MEM={}, MEM_MAX=15; // minutos que a última posição continua valendo
+function situacaoPonto(o,dk){ const ag=agora(), a=o.t[dk]||[], agMs=Date.now(); if(!a.length) return null;
+  const bus={}; RT.v.forEach(x=>{ if(o.ids.indexOf(String(x[3]))<0||x[5]==null) return; const sx=x[4]==='0'?'T':x[4]==='1'?'B':null; if(sx&&sx!==o.s) return; bus[String(x[3])+'|'+(x[5]%1440)]=x; });
   const out=[];
-  for(const v of a){ if(out.length>=4) break; const x=bus[v.l+'|'+(v.ini%1440)], f=Math.round(v.m-ag);
+  for(const v of a){ if(out.length>=10) break; const k=dk+'|'+v.l+'|'+v.ini, x=bus[v.l+'|'+(v.ini%1440)], f=Math.round(v.m-ag);
+    let eta=null, velho=0, mem=MEM[k];
+    if(mem&&mem.passou) continue;
     if(x){ const p=v.sh.p, c=cumula(v.sh); let b=-1,bd=1e9; p.forEach((q,i)=>{ const d=dist(q[0],q[1],x[1],x[2]); if(d<bd){ bd=d; b=i; } });
-      const dp=dist(x[1],x[2],LOC.lat,LOC.lon);
-      if(dp<120){ out.push({x:v,c:'term',t:'No ponto',sub:'embarque agora'}); continue; }
-      if(bd<500){ const r=c[v.lp.i]-c[b]; if(r<-150) continue; // já passou por aqui
-        const eta=Math.max(1,Math.round(r/1000/VEL_KMH*60));
-        if(eta<=5){ out.push({x:v,c:'cheg',t:'Chegando',sub:'≈ '+eta+' min'}); continue; }
-        if(eta>f+6){ out.push({x:v,c:'atr',t:'Atrasado',sub:'previsto ≈ '+hm(Math.round(ag+eta))}); continue; }
-        out.push({x:v,c:'prog',t:f<60?'Em '+f+' min':'Programado',sub:'ônibus a caminho'}); continue; } }
+      if(dist(x[1],x[2],LOC.lat,LOC.lon)<120&&x[6]<120){ MEM[k]={eta:0,t:agMs,st:'term'}; out.push({x:v,c:'term',t:'No ponto',sub:'embarque agora',e:ag}); continue; }
+      if(bd<500){ const r=c[v.lp.i]-c[b];
+        if(r<-150){ MEM[k]={passou:1,t:agMs}; continue; } // já passou por aqui
+        const e0=Math.max(0,r/1000/VEL_KMH*60-(x[6]||0)/60); // desconta a idade da posição
+        mem=MEM[k]={eta:e0,t:agMs,st:mem&&mem.st}; eta=e0; } }
+    if(eta==null&&mem&&!mem.passou&&(agMs-mem.t)<MEM_MAX*60000){ velho=Math.round((agMs-mem.t)/60000); eta=Math.max(0,mem.eta-velho); }
+    if(eta!=null){ const etaR=Math.max(1,Math.round(eta)), nota=velho>=1?' · último sinal há '+velho+' min':'';
+      // "Atrasado" só entra com folga de 6 min e só sai com folga de 3 (não fica piscando entre os dois)
+      const atr=mem&&mem.st==='atr'?eta>f+3:eta>f+6;
+      if(etaR<=5){ mem.st='cheg'; out.push({x:v,c:'cheg',t:'Chegando',sub:'≈ '+etaR+' min'+(f<-2?' · atrasado '+(-f)+' min':'')+nota,e:ag+eta}); continue; }
+      if(atr){ mem.st='atr'; out.push({x:v,c:'atr',t:'Atrasado',sub:'previsto ≈ '+hm(Math.round(ag+eta))+nota,e:ag+eta}); continue; }
+      mem.st='prog'; out.push({x:v,c:'prog',t:f<60?'Em '+f+' min':'Programado',sub:'ônibus a caminho'+nota}); continue; }
     if(v.m+2<=ag) continue;
-    out.push({x:v,c:f<=0?'saindo':'prog',t:f<=0?'Agora':f<60?'Em '+f+' min':'Programado',sub:f<=0?'horário estimado':(RT.t?'horário estimado':'sem GPS no momento')}); }
+    // viagem que já saiu do ponto inicial e cujo ônibus não aparece no GPS: avisa que está sem sinal
+    if(RT.t&&v.ini<=ag){ out.push({x:v,c:'off',t:f<=0?'Agora':'Em '+f+' min',sub:'ônibus sem sinal de GPS'}); continue; }
+    out.push({x:v,c:f<=0?'saindo':'prog',t:f<=0?'Agora':f<60?'Em '+f+' min':'Programado',sub:RT.t?(f<60?'horário estimado':''):'GPS indisponível no momento'}); }
+  Object.keys(MEM).forEach(k=>{ if(agMs-MEM[k].t>90*60000) delete MEM[k]; });
+  // ordem pelo horário em que o ônibus deve passar de fato: um atrasado que só chega depois do seguinte vai para trás dele
+  out.forEach(z=>{ if(z.e==null) z.e=z.x.m; }); out.sort((p,q)=>p.e-q.e);
   return out.length?out:null; }
 
 // ── situação de cada linha: ônibus no Terminal, a caminho (viagem de volta ao Terminal) ou só o horário programado ──
@@ -181,25 +197,35 @@ function situacao(o,dk){ const ag=agora(), a=(o.t[dk]||[]), prox=a.filter(x=>x.m
   const agM=Math.floor(ag)%1440, noTerm=[], vindo=[], bv=o.b[dk]||{};
   RT.v.filter(x=>o.ids.indexOf(String(x[3]))>=0&&x[6]<240).forEach(x=>{ const d=dist(x[1],x[2],TTU[0],TTU[1]), mi=x[5]==null?null:x[5]%1440;
     const ida=x[4]==='0'||(x[4]!=='1'&&mi!=null&&!bv[mi]); // sentido 0 = saindo do Terminal
-    if(d<R_TERM&&!(x[7]>8)){ if(ida&&mi!=null&&((agM-mi+1440)%1440)<180&&((agM-mi+1440)%1440)>=1) return; noTerm.push(x); return; } // já saiu na viagem de ida
+    if(d<R_TERM&&!(x[7]>8)){ if(ida&&mi!=null&&((agM-mi+1440)%1440)<180&&((agM-mi+1440)%1440)>=1) return; delete MEM['T|'+x[3]+'|'+mi]; noTerm.push(x); return; } // já saiu na viagem de ida
     if(ida) return;
-    const sh=mi!=null?bv[mi]:null, r=sh?falta(sh,x[1],x[2]):null, m=r!=null?r:d*1.35;
-    vindo.push({x,eta:Math.max(1,Math.round(m/1000/VEL_KMH*60))}); });
+    const sh=mi!=null?bv[mi]:null, r=sh?falta(sh,x[1],x[2]):null, m=r!=null?r:d*1.35, eta=Math.max(0,m/1000/VEL_KMH*60-(x[6]||0)/60), k='T|'+x[3]+'|'+mi;
+    MEM[k]={eta,t:Date.now(),st:(MEM[k]||{}).st}; vindo.push({x,k,eta:Math.max(1,Math.round(eta))}); });
+  // ônibus que sumiu do GPS há pouco: continua "vindo" pela última posição, descontando o tempo que passou
+  Object.keys(MEM).forEach(k=>{ const p=k.split('|'); if(p[0]!=='T'||o.ids.indexOf(p[1])<0||vindo.some(z=>z.k===k)) return; const m=MEM[k], v=(Date.now()-m.t)/60000;
+    if(v<MEM_MAX&&m.eta-v>-2) vindo.push({k,eta:Math.max(1,Math.round(m.eta-v)),velho:Math.round(v)}); });
   vindo.sort((p,q)=>p.eta-q.eta);
   const s=prox.slice(0,4).map((x,i)=>{ const f=Math.round(x.m-ag);
     if(i<noTerm.length) return {x,c:f<=0?'saindo':'term',t:f<=0?'Saindo':'No terminal',sub:f>0?'embarque na plataforma':''};
     const v=vindo[i-noTerm.length];
-    if(v&&v.eta<=5) return {x,c:'cheg',t:'Chegando',sub:'≈ '+v.eta+' min para o Terminal'};
-    if(v&&v.eta>f+6) return {x,c:'atr',t:'Atrasado',sub:'saída prevista ≈ '+hm(Math.round(ag+v.eta+1))};
+    const nota=v&&v.velho>=1?' · último sinal há '+v.velho+' min':'', mm=v?MEM[v.k]:null;
+    if(v&&v.eta<=5){ if(mm) mm.st='cheg'; return {x,c:'cheg',t:'Chegando',sub:'≈ '+v.eta+' min para o Terminal'+nota}; }
+    if(v&&(mm&&mm.st==='atr'?v.eta>f+3:v.eta>f+6)){ if(mm) mm.st='atr'; return {x,c:'atr',t:'Atrasado',sub:'saída prevista ≈ '+hm(Math.round(ag+v.eta+1))+nota}; }
+    if(mm) mm.st='prog';
     if(f<=0) return {x,c:'saindo',t:'Agora',sub:'horário programado'};
     return {x,c:'prog',t:f<60?'Em '+f+' min':'Programado',sub:v?'ônibus a caminho do Terminal':(RT.t?'':'sem GPS no momento')}; });
   return s; }
 
 function desenha(){ if(!D) return; const dk=tipoDia(), ag=agora();
-  const rows=LIN.map(o=>({o,s:NO_TTU?situacao(o,dk):situacaoPonto(o,dk)})).sort((p,q)=>(p.s?p.s[0].x.m:1e9)-(q.s?q.s[0].x.m:1e9)||parseInt(p.o.id,10)-parseInt(q.o.id,10));
-  const ativos=rows.filter(r=>r.s), porPag=12, pags=Math.max(1,Math.ceil(ativos.length/porPag)); if(pagina>=pags) pagina=0;
+  const rows=LIN.map(o=>({o,s:NO_TTU?situacao(o,dk):situacaoPonto(o,dk)})).sort((p,q)=>(p.s?(p.s[0].e||p.s[0].x.m):1e9)-(q.s?(q.s[0].e||q.s[0].x.m):1e9)||parseInt(p.o.id,10)-parseInt(q.o.id,10));
+  let ativos=rows.filter(r=>r.s);
+  // poucas linhas passando aqui (aeroporto, cataratas…): cada viagem ganha a sua linha na tela, com a situação dela
+  const umaPorViagem=!NO_TTU&&ativos.length&&ativos.length<=4;
+  if(umaPorViagem) ativos=[].concat(...ativos.map(r=>r.s.map((z,k)=>({o:r.o,s:[z],via:true})))).sort((p,q)=>(p.s[0].e||p.s[0].x.m)-(q.s[0].e||q.s[0].x.m)).slice(0,12);
+  if(!NO_TTU){ const ul=$('#cab').lastElementChild; if(ul) ul.textContent=umaPorViagem?'Viagem':'Depois'; }
+  const porPag=12, pags=Math.max(1,Math.ceil(ativos.length/porPag)); if(pagina>=pags) pagina=0;
   const vis=ativos.slice(pagina*porPag,(pagina+1)*porPag), h=Math.floor((1080-118-64-70)/porPag);
-  $('#lista').innerHTML=vis.map(r=>{ const o=r.o, s0=r.s[0], depois=r.s.slice(1,3).map(z=>hm(Math.round(z.x.m))).join(' · ');
+  $('#lista').innerHTML=vis.map(r=>{ const o=r.o, s0=r.s[0], depois=r.via?'início '+hm(s0.x.ini):r.s.slice(1,3).map(z=>hm(Math.round(z.x.m))).join(' · ');
     const rot=s0.x.r?cap(s0.x.r):'';
     return '<div class="row" style="--h:'+h+'px"><div class="num" style="background:'+o.cor+';color:#fff'+(o.ids.join('/').length>4?';font-size:32px':'')+'">'+esc(o.ids.join('/'))+'</div>'+
       '<div class="dest"><b>'+esc(o.dest)+'</b>'+(rot?'<span>'+esc(rot)+'</span>':'')+'</div>'+
