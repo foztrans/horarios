@@ -46,6 +46,12 @@ header .data{font-size:22px;color:#566777;font-weight:600}
 .sit small{display:block;font-size:20px;font-weight:600;color:var(--mu)}
 .dep{font-family:var(--display);font-size:34px;color:var(--mu);font-variant-numeric:tabular-nums}
 .enc .hr,.enc .dest b{color:var(--mu)}
+.duas .cab{visibility:hidden;height:0;overflow:hidden} .duas.tela{grid-template-rows:118px 0 1fr 70px}
+.duas .lista{display:grid;grid-template-columns:1fr 1fr;column-gap:6px;align-content:start}
+.cab2,.duas .row{display:grid;grid-template-columns:104px 1fr 54px 112px 236px;align-items:center;column-gap:14px;padding:0 16px}
+.cab2{height:56px;background:var(--azul);font-size:20px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#cfe0f1}
+.duas .row .dep{display:none} .duas .num{height:calc(var(--h) - 12px);font-size:32px} .duas .dest b{font-size:28px} .duas .dest span{font-size:18px}
+.duas .ala{font-size:30px} .duas .ala small{display:none} .duas .hr{font-size:42px} .duas .sit{font-size:24px;gap:10px} .duas .sit small{font-size:15px} .duas .sit i{width:16px;height:16px}
 @keyframes pisca{50%{opacity:.25}}
 footer{display:flex;align-items:center;background:var(--azul2);border-top:4px solid var(--laranja);overflow:hidden;font-size:30px;font-weight:600;white-space:nowrap}
 footer .rot{flex:none;background:var(--laranja);color:#1a0f00;font-weight:700;height:100%;display:flex;align-items:center;padding:0 26px;text-transform:uppercase;font-size:24px}
@@ -219,22 +225,29 @@ function situacao(o,dk){ const ag=agora(), a=(o.t[dk]||[]), prox=a.filter(x=>x.m
 
 function desenha(){ if(!D) return; const dk=tipoDia(), ag=agora();
   const rows=LIN.map(o=>({o,s:NO_TTU?situacao(o,dk):situacaoPonto(o,dk)})).sort((p,q)=>(p.s?(p.s[0].e||p.s[0].x.m):1e9)-(q.s?(q.s[0].e||q.s[0].x.m):1e9)||parseInt(p.o.id,10)-parseInt(q.o.id,10));
-  let ativos=rows.filter(r=>r.s);
+  // no TTU, só as partidas da próxima hora (ajustável: ?janela=90), para a tela não ficar trocando de página à toa
+  const JAN=+(QS.get('janela'))||60;
+  let ativos=rows.filter(r=>r.s&&(!NO_TTU||(r.s[0].h||r.s[0].x.m)<=ag+JAN));
   // poucas linhas passando aqui (aeroporto, cataratas…): cada viagem ganha a sua linha na tela, com a situação dela
   const umaPorViagem=!NO_TTU&&ativos.length&&ativos.length<=4;
   if(umaPorViagem) ativos=[].concat(...ativos.map(r=>r.s.map((z,k)=>({o:r.o,s:[z],via:true})))).sort((p,q)=>(p.s[0].e||p.s[0].x.m)-(q.s[0].e||q.s[0].x.m)).slice(0,12);
   if(!NO_TTU){ const ul=$('#cab').lastElementChild; if(ul) ul.textContent=umaPorViagem?'Viagem':'Depois'; }
-  const porPag=12, pags=Math.max(1,Math.ceil(ativos.length/porPag)); if(pagina>=pags) pagina=0;
-  const vis=ativos.slice(pagina*porPag,(pagina+1)*porPag), h=Math.floor((1080-118-64-70)/porPag);
-  $('#lista').innerHTML=vis.map(r=>{ const o=r.o, s0=r.s[0], depois=r.via?'início '+hm(s0.x.ini):r.s.slice(1,3).map(z=>hm(Math.round(z.h||z.x.m))).join(' · ');
+  // TTU com muitas linhas: duas colunas de 13 (até 26 partidas numa tela só); fora isso, uma coluna de 12
+  const duas=NO_TTU&&ativos.length>12, porCol=duas?13:12, porPag=duas?26:12, pags=Math.max(1,Math.ceil(ativos.length/porPag)); if(pagina>=pags) pagina=0;
+  $('#tela').classList.toggle('duas',duas);
+  const vis=ativos.slice(pagina*porPag,(pagina+1)*porPag), h=duas?Math.floor((1080-118-70-56)/porCol):Math.floor((1080-118-64-70)/porCol);
+  const linha=r=>{ const o=r.o, s0=r.s[0], depois=r.via?'início '+hm(s0.x.ini):r.s.slice(1,3).map(z=>hm(Math.round(z.h||z.x.m))).join(' · ');
     const rot=s0.x.r?cap(s0.x.r):'';
-    return '<div class="row" style="--h:'+h+'px"><div class="num" style="background:'+o.cor+';color:#fff'+(o.ids.join('/').length>4?';font-size:32px':'')+'">'+esc(o.ids.join('/'))+'</div>'+
+    return '<div class="row" style="--h:'+h+'px"><div class="num" style="background:'+o.cor+';color:#fff'+(o.ids.join('/').length>4?';font-size:'+(duas?24:32)+'px':'')+'">'+esc(o.ids.join('/'))+'</div>'+
       '<div class="dest"><b>'+esc(o.dest)+'</b>'+(rot?'<span>'+esc(rot)+'</span>':'')+'</div>'+
       (NO_TTU?'<div class="ala">'+(o.ala?esc(o.ala)+'<small>ala</small>':'—')+'</div>':'')+
       '<div class="hr">'+hm(Math.round(s0.h||s0.x.m))+'</div>'+
       '<div class="sit '+s0.c+'"><i></i><div>'+esc(s0.t)+(s0.sub?'<small>'+esc(s0.sub)+'</small>':'')+'</div></div>'+
-      '<div class="dep">'+esc(depois)+'</div></div>'; }).join('')+(pags>1?'<div class="pag">página '+(pagina+1)+' de '+pags+'</div>':'')+
-      (!ativos.length?'<div class="row" style="--h:120px"><div></div><div class="dest"><b>'+(NO_TTU?'Sem mais partidas hoje':'Sem mais ônibus hoje neste ponto')+'</b></div></div>':'');
+      '<div class="dep">'+esc(depois)+'</div></div>'; };
+  const cab2='<div class="cab2"><div>Linha</div><div>Destino</div><div style="text-align:center">Ala</div><div>Partida</div><div>Situação</div></div>';
+  $('#lista').innerHTML=(duas?'<div class="col">'+cab2+vis.slice(0,porCol).map(linha).join('')+'</div><div class="col">'+cab2+vis.slice(porCol).map(linha).join('')+'</div>':vis.map(linha).join(''))+
+      (pags>1?'<div class="pag">página '+(pagina+1)+' de '+pags+'</div>':'')+
+      (!ativos.length?'<div class="row" style="--h:120px"><div></div><div class="dest"><b>'+(NO_TTU?(rows.some(r=>r.s)?'Nenhuma partida na próxima hora':'Sem mais partidas hoje'):'Sem mais ônibus hoje neste ponto')+'</b></div></div>':'');
 }
 function relogio(){ const n=new Date(); $('#hora').textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
   $('#data').textContent=n.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'}); }
