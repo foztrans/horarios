@@ -71,7 +71,7 @@ const $=q=>document.querySelector(q);
 const esc=t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const hm=m=>String(Math.floor(m/60)%24).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 const TTU=[-25.5326,-54.5875], R_TERM=230; // ônibus a menos de R_TERM metros do centro do Terminal = "no terminal"
-const VEL_KMH=17; // velocidade média para estimar a chegada ao Terminal
+const VEL_KMH=18; // velocidade média (km/h) para estimar a chegada ao Terminal pelo que falta do trajeto
 const ESP_RE=/(^|[^A-Za-zÀ-ÿ])ESP([^A-Za-zÀ-ÿ]|$)/i;
 const KX=111320*Math.cos(-25.52*Math.PI/180), KY=110540;
 const dist=(a,b,c,d)=>Math.hypot((b-d)*KX,(a-c)*KY);
@@ -112,7 +112,7 @@ function prepara(){
       for(let i=0;i<p.length;i++){ if(i) acc+=dist(p[i-1][0],p[i-1][1],p[i][0],p[i][1]); const d=dist(p[i][0],p[i][1],TTU[0],TTU[1]); if(d<best){ best=d; ate=acc; } }
       s._near=best; s._off=best<400&&tot>0?Math.round((ate/tot)*(s.d||0)):null; });
     Object.keys(l.dep||{}).forEach(dk=>{ ['T','B'].forEach(sx=>{ (l.dep[dk][sx]||[]).forEach(x=>{ const sh=l.shapes[x[1]]; if(!sh||ESP_RE.test(sh.v||'')) return; const m=x[0]<180?x[0]+1440:x[0];
-      if(sx==='B'){ (o.b[dk]=o.b[dk]||[]).push(m); return; }
+      if(sx==='B'){ (o.b[dk]=o.b[dk]||{})[m%1440]=sh; return; } // viagens de volta ao Terminal: minuto de saída → trajeto
       if(sh._off==null) return; // trajeto que não passa no Terminal
       const vs=(o.cfg.var||{}), rot=Object.prototype.hasOwnProperty.call(vs,sh.v)?vs[sh.v]:'';
       (o.t[dk]=o.t[dk]||[]).push({m:m+sh._off, ini:m, r:rot, l:l.id}); }); }); }); });
@@ -120,17 +120,32 @@ function prepara(){
 }
 
 // ── situação de cada linha: ônibus no Terminal, a caminho (viagem de volta ao Terminal) ou só o horário programado ──
+// quanto falta, pelo trajeto, do ponto onde o ônibus está até o fim (o Terminal); null se ele estiver fora do trajeto
+function falta(sh,lat,lon){ const p=sh.p||[]; if(p.length<2) return null;
+  if(!sh._cum){ sh._cum=[0]; for(let i=1;i<p.length;i++) sh._cum.push(sh._cum[i-1]+dist(p[i-1][0],p[i-1][1],p[i][0],p[i][1])); }
+  let b=-1, bd=1e9; for(let i=0;i<p.length;i++){ const d=dist(lat,lon,p[i][0],p[i][1]); if(d<bd){ bd=d; b=i; } }
+  if(bd>500) return null; return sh._cum[p.length-1]-sh._cum[b]; }
+// situação de cada linha:
+//  • "No terminal": ônibus da linha parado na área do TTU (menos os que já saíram numa viagem de ida);
+//  • "Chegando": ônibus numa viagem de VOLTA ao Terminal (sentido 1 do ITS) a no máximo 5 min, pelo trajeto;
+//  • "Atrasado": o ônibus que vai fazer a partida ainda está longe e só chega bem depois do horário;
+//  • senão, o horário programado.
 function situacao(o,dk){ const ag=agora(), a=(o.t[dk]||[]), prox=a.filter(x=>x.m+2>ag); if(!prox.length) return null;
-  const meus=RT.v.filter(x=>o.ids.indexOf(String(x[3]))>=0&&x[6]<240), noTerm=[], vindo=[], volta=new Set((o.b[dk]||[]).map(m=>m%1440));
-  meus.forEach(x=>{ const d=dist(x[1],x[2],TTU[0],TTU[1]); if(d<R_TERM) noTerm.push(x); else if(x[5]!=null&&volta.has(x[5]%1440)) vindo.push({x,eta:Math.max(1,Math.round(d/1000*1.3/VEL_KMH*60))}); });
+  const agM=Math.floor(ag)%1440, noTerm=[], vindo=[], bv=o.b[dk]||{};
+  RT.v.filter(x=>o.ids.indexOf(String(x[3]))>=0&&x[6]<240).forEach(x=>{ const d=dist(x[1],x[2],TTU[0],TTU[1]), mi=x[5]==null?null:x[5]%1440;
+    const ida=x[4]==='0'||(x[4]!=='1'&&mi!=null&&!bv[mi]); // sentido 0 = saindo do Terminal
+    if(d<R_TERM){ if(ida&&mi!=null&&((agM-mi+1440)%1440)<180&&((agM-mi+1440)%1440)>=1) return; noTerm.push(x); return; } // já saiu na viagem de ida
+    if(ida) return;
+    const sh=mi!=null?bv[mi]:null, r=sh?falta(sh,x[1],x[2]):null, m=r!=null?r:d*1.35;
+    vindo.push({x,eta:Math.max(1,Math.round(m/1000/VEL_KMH*60))}); });
   vindo.sort((p,q)=>p.eta-q.eta);
   const s=prox.slice(0,4).map((x,i)=>{ const f=Math.round(x.m-ag);
     if(i<noTerm.length) return {x,c:f<=0?'saindo':'term',t:f<=0?'Saindo':'No terminal',sub:f>0?'embarque na plataforma':''};
     const v=vindo[i-noTerm.length];
-    if(v){ if(v.eta<=f+1) return {x,c:'cheg',t:'Chegando',sub:'≈ '+v.eta+' min para o Terminal'};
-      return {x,c:v.eta>f+6?'atr':'cheg',t:v.eta>f+6?'Atrasado':'Chegando',sub:'saída prevista ≈ '+hm(Math.round(ag+v.eta+1))}; }
+    if(v&&v.eta<=5) return {x,c:'cheg',t:'Chegando',sub:'≈ '+v.eta+' min para o Terminal'};
+    if(v&&v.eta>f+6) return {x,c:'atr',t:'Atrasado',sub:'saída prevista ≈ '+hm(Math.round(ag+v.eta+1))};
     if(f<=0) return {x,c:'saindo',t:'Agora',sub:'horário programado'};
-    return {x,c:'prog',t:f<60?'Em '+f+' min':'Programado',sub:RT.t?'':'sem GPS no momento'}; });
+    return {x,c:'prog',t:f<60?'Em '+f+' min':'Programado',sub:v?'ônibus a caminho do Terminal':(RT.t?'':'sem GPS no momento')}; });
   return s; }
 
 function desenha(){ if(!D) return; const dk=tipoDia(), ag=agora();
