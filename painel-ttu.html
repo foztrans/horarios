@@ -167,6 +167,8 @@ function situacaoPonto(o,dk){ const ag=agora(), a=o.t[dk]||[], agMs=Date.now(); 
     let eta=null, velho=0, mem=MEM[k];
     if(mem&&mem.passou) continue;
     if(x){ const p=v.sh.p, c=cumula(v.sh); let b=-1,bd=1e9; p.forEach((q,i)=>{ const d=dist(q[0],q[1],x[1],x[2]); if(d<bd){ bd=d; b=i; } });
+      // ônibus parado no ponto muito depois do horário dessa viagem: é o carro esperando a próxima (o ITS ainda informa a viagem anterior) — não conta
+      if(dist(x[1],x[2],LOC.lat,LOC.lon)<120&&f<-12){ continue; }
       if(dist(x[1],x[2],LOC.lat,LOC.lon)<120&&x[6]<120){ MEM[k]={eta:0,t:agMs,st:'term'}; out.push({x:v,c:'term',t:'No ponto',sub:'embarque agora',e:ag}); continue; }
       if(bd<500){ const r=c[v.lp.i]-c[b];
         if(r<-150){ MEM[k]={passou:1,t:agMs}; continue; } // já passou por aqui
@@ -182,7 +184,7 @@ function situacaoPonto(o,dk){ const ag=agora(), a=o.t[dk]||[], agMs=Date.now(); 
       mem.st='prog'; out.push({x:v,c:'prog',t:f<60?'Em '+f+' min':'Programado',sub:'ônibus a caminho'+nota}); continue; }
     if(v.m+2<=ag) continue;
     // viagem que já saiu do ponto inicial e cujo ônibus não aparece no GPS: avisa que está sem sinal
-    if(RT.t&&v.ini<=ag){ out.push({x:v,c:'off',t:f<=0?'Agora':'Em '+f+' min',sub:'ônibus sem sinal de GPS'}); continue; }
+    if(RT.t&&v.ini<=ag){ out.push({x:v,c:'off',t:f<=0?'Agora':'Em '+f+' min',sub:'horário programado'}); continue; }
     out.push({x:v,c:f<=0?'saindo':'prog',t:f<=0?'Agora':f<60?'Em '+f+' min':'Programado',sub:RT.t?(f<60?'horário estimado':''):'GPS indisponível no momento'}); }
   Object.keys(MEM).forEach(k=>{ if(agMs-MEM[k].t>90*60000) delete MEM[k]; });
   // ordem pelo horário em que o ônibus deve passar de fato: um que só chega depois do seguinte vai para trás dele
