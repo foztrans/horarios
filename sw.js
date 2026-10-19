@@ -11,7 +11,7 @@
 const VERSAO = 'onibus-foz-v1';
 const FIXOS = ['./', 'manifest.webmanifest', 'vendor/leaflet.js', 'icons/icon-192.png', 'icons/icon-512.png'];
 const FUNDO = 'onibus-foz-fundo', FUNDO_MAX = 1500, FUNDO_DIAS = 30;
-const FUNDO_RE = /^https:\/\/(api\.maptiler\.com\/maps\/|tile\.openstreetmap\.org\/|[a-d]\.basemaps\.cartocdn\.com\/)/;
+const FUNDO_RE = /^https:\/\/(api\.maptiler\.com\/maps\/|tile\.openstreetmap\.org\/|server\.arcgisonline\.com\/ArcGIS\/rest\/services\/World_Street_Map\/)/;
 let fundoN = 0;
 function guardaFundo(r, resp) {
   if (!resp || !resp.ok || resp.type === 'opaque') return; // só resposta com CORS (as opacas ocupariam espaço demais no aparelho)
