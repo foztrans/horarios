@@ -9,7 +9,7 @@
 //  - Dados das linhas e posição dos ônibus, rotas a pé e busca de endereços: sempre da internet.
 // Só mude o nome abaixo se quiser forçar todos os aparelhos a apagar o que guardaram.
 const VERSAO = 'onibus-foz-v1';
-const FIXOS = ['./', 'manifest.webmanifest', 'vendor/leaflet.js', 'icons/icon-192.png', 'icons/icon-512.png'];
+const FIXOS = ['./', 'manifest.webmanifest', 'vendor/leaflet.js', 'vendor/protomaps-leaflet.js', 'icons/icon-192.png', 'icons/icon-512.png'];
 const FUNDO = 'onibus-foz-fundo', FUNDO_MAX = 1500, FUNDO_DIAS = 30;
 const FUNDO_RE = /^https:\/\/(api\.maptiler\.com\/maps\/|tile\.openstreetmap\.org\/|server\.arcgisonline\.com\/ArcGIS\/rest\/services\/World_Street_Map\/)/;
 let fundoN = 0;
